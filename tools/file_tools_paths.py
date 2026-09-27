@@ -177,16 +177,27 @@ def _host_to_container_path(text: str, host_root: str, container_root: str) -> s
 
     In-root paths map under ``container_root``; out-of-root drive-letter paths are
     rejected (blanket acceptance would smuggle arbitrary host paths into the sandbox).
-    An already-container path (``/...``) passes through unchanged."""
+    An already-container path (``/...``) passes through unchanged.
+    
+    Path normalization is performed before containment checks to prevent traversal
+    attacks (e.g., C:\root\..\escape.txt).
+    """
     if posixpath.isabs(text) or not _windows_drive_path(text):
         return text
-    drive_norm = text.replace("\\", "/")
-    root_norm = host_root.replace("\\", "/").rstrip("/")
+    drive_norm = posixpath.normpath(text.replace("\\", "/"))
+    root_norm = posixpath.normpath(host_root.replace("\\", "/"))
     if drive_norm.lower() == root_norm.lower():
         return container_root
     if drive_norm.lower().startswith(root_norm.lower() + "/"):
         relative = drive_norm[len(root_norm):].lstrip("/")
-        return posixpath.join(container_root, relative) if relative else container_root
+        # Re-validate: the resolved container path must stay under container_root
+        resolved = posixpath.normpath(posixpath.join(container_root, relative))
+        if not resolved.startswith(container_root.rstrip("/") + "/"):
+            raise ValueError(
+                f"Host path {text!r} resolves outside the mounted workspace {host_root!r}; "
+                f"pass a workspace-relative path or one under {container_root}."
+            )
+        return resolved
     raise ValueError(
         f"Host path {text!r} is outside the mounted workspace {host_root!r}; "
         f"pass a workspace-relative path or one under {container_root}."
