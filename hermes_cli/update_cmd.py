@@ -1103,6 +1103,9 @@ def _prepare_git_command() -> tuple[bool, list, bool]:
         print("  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash")
         sys.exit(1)
 
+    from hermes_cli._subprocess_compat import expose_pm_git
+
+    expose_pm_git()
     git_cmd = _base_git_cmd()
     if sys.platform == "win32" and git_dir.exists():
         _git_run(git_cmd, ["config", "windows.appendAtomically", "false"])
@@ -1286,9 +1289,12 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
 
     desktop_dir = _m().PROJECT_ROOT / "apps" / "desktop"
+    # An installed Hermes.app only this update refreshes counts even with no release/ build
+    # beside it: without one it was never rebuilt, so it never got newer (#52339).
     had_desktop_app_before_update = (
         _m()._desktop_packaged_executable(desktop_dir) is not None
-        or _m()._desktop_dist_exists(desktop_dir))
+        or _m()._desktop_dist_exists(desktop_dir)
+        or bool(_m()._installed_desktop_apps()))
 
     use_zip_update, git_cmd, is_fork = _prepare_git_command()
 
